@@ -1,0 +1,382 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme inline {
+  --font-sans: "Inter Variable", -apple-system, system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-base: var(--bg-0);
+  --color-raised: var(--bg-1);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-soft: var(--ink-soft);
+  --color-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-serious: var(--serious);
+  --color-bad: var(--bad);
+}
+
+:root {
+  --accent: #22e3ff;
+  --accent-2: #5b8cff;
+  --accent-3: #a47bff;
+  --accent-4: #ff5ec8;
+  --good: #3ee0a4;
+  --warn: #f6c453;
+  --serious: #ff9f5a;
+  --bad: #ff6b81;
+  --motion: 1;
+}
+
+/* Themes define surfaces. Accent colours are chosen separately. */
+[data-theme="nexus"] {
+  --bg-0: #05070d;
+  --bg-1: #0a0f1c;
+  --panel: rgb(13 19 34 / 0.8);
+  --panel-solid: #0e1424;
+  --line: rgb(140 190 255 / 0.11);
+  --line-strong: rgb(140 190 255 / 0.22);
+  --ink: #e9effc;
+  --ink-soft: #97a4c0;
+  --ink-faint: #667390;
+  --ambient-a: rgb(34 227 255 / 0.10);
+  --ambient-b: rgb(91 100 255 / 0.11);
+  --ambient-c: rgb(164 123 255 / 0.07);
+  --grid: rgb(120 170 255 / 0.05);
+}
+[data-theme="arctic"] {
+  --bg-0: #060d16;
+  --bg-1: #0b1623;
+  --panel: rgb(15 28 43 / 0.8);
+  --panel-solid: #101e2e;
+  --line: rgb(170 220 255 / 0.13);
+  --line-strong: rgb(170 220 255 / 0.26);
+  --ink: #eef7ff;
+  --ink-soft: #a0b7cc;
+  --ink-faint: #6c8499;
+  --ambient-a: rgb(120 210 255 / 0.13);
+  --ambient-b: rgb(70 150 255 / 0.10);
+  --ambient-c: rgb(180 235 255 / 0.05);
+  --grid: rgb(170 220 255 / 0.05);
+}
+[data-theme="violet"] {
+  --bg-0: #08060f;
+  --bg-1: #100b1c;
+  --panel: rgb(24 17 41 / 0.8);
+  --panel-solid: #1a122c;
+  --line: rgb(190 160 255 / 0.13);
+  --line-strong: rgb(190 160 255 / 0.26);
+  --ink: #f1ecfd;
+  --ink-soft: #aba0c6;
+  --ink-faint: #766b92;
+  --ambient-a: rgb(164 123 255 / 0.14);
+  --ambient-b: rgb(255 94 200 / 0.07);
+  --ambient-c: rgb(91 100 255 / 0.09);
+  --grid: rgb(190 160 255 / 0.05);
+}
+[data-theme="obsidian"] {
+  --bg-0: #060607;
+  --bg-1: #0c0c0e;
+  --panel: rgb(20 20 23 / 0.84);
+  --panel-solid: #141417;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.17);
+  --ink: #ececee;
+  --ink-soft: #9c9ca3;
+  --ink-faint: #68686f;
+  --ambient-a: rgb(255 255 255 / 0.03);
+  --ambient-b: rgb(255 255 255 / 0.02);
+  --ambient-c: rgb(255 255 255 / 0.015);
+  --grid: rgb(255 255 255 / 0.028);
+}
+[data-theme="holographic"] {
+  --bg-0: #05060f;
+  --bg-1: #0b0d1e;
+  --panel: rgb(17 19 41 / 0.78);
+  --panel-solid: #12142c;
+  --line: rgb(180 200 255 / 0.15);
+  --line-strong: rgb(180 200 255 / 0.3);
+  --ink: #eef1ff;
+  --ink-soft: #a4aed0;
+  --ink-faint: #6e789c;
+  --ambient-a: rgb(34 227 255 / 0.12);
+  --ambient-b: rgb(255 94 200 / 0.09);
+  --ambient-c: rgb(164 123 255 / 0.11);
+  --grid: rgb(180 200 255 / 0.06);
+}
+
+[data-accent="cyan"] { --accent: #22e3ff; --accent-2: #5b8cff; --accent-3: #a47bff; }
+[data-accent="blue"] { --accent: #6aa5ff; --accent-2: #4f6dff; --accent-3: #22e3ff; }
+[data-accent="violet"] { --accent: #b794ff; --accent-2: #7c6bff; --accent-3: #ff7ad1; }
+[data-accent="magenta"] { --accent: #ff78d0; --accent-2: #b67bff; --accent-3: #6aa5ff; }
+[data-accent="emerald"] { --accent: #4cf0b4; --accent-2: #22c8e0; --accent-3: #7ca8ff; }
+
+[data-motion="reduced"] { --motion: 0.4; }
+[data-motion="off"] { --motion: 0; }
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Component classes live in a cascade layer so Tailwind utilities can override them.
+   Unlayered CSS beats every layered utility: `.glass { position: relative }` written out
+   here once silently cancelled `fixed` and pushed drawers off-screen. */
+@layer components {
+  /* Glass surface shared by every panel. No backdrop-filter: blurring over the animated
+     background would force a full re-blur on every frame of an always-open app. */
+  .glass {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 16px 40px -28px rgb(0 0 0 / 0.9);
+  }
+
+  .glass-edge::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 42%, transparent 62%, color-mix(in srgb, var(--accent-3) 30%, transparent));
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-feature-settings: "zero" 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .display {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Ambient backdrop. Continuous animation keeps WebKit at 60 Hz and measured about 18% of a
+   core while idle, so motion is delivered in short pulses set by useAmbient: animations
+   stay paused unless data-pulse is on, and the sweep exists only during a pulse. */
+:root { --play: paused; }
+[data-pulse="on"] { --play: running; }
+
+.bg-grid {
+  position: absolute;
+  inset: -64px;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 78% 72% at 56% 34%, #000 22%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 78% 72% at 56% 34%, #000 22%, transparent 78%);
+  animation: grid-drift 42s linear infinite;
+  animation-play-state: var(--play, running);
+}
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+  animation: orb-float 26s ease-in-out infinite alternate;
+  animation-play-state: var(--play, running);
+}
+.bg-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 180px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 3.5%, transparent) 88%, color-mix(in srgb, var(--accent) 11%, transparent));
+  opacity: 0;
+}
+[data-pulse="on"] .bg-scan { animation: scan-sweep 6s cubic-bezier(0.45, 0.05, 0.55, 0.95) 1 both; }
+.bg-mote {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+}
+[data-pulse="on"] .bg-mote { animation: mote 4.5s linear 1 both; }
+[data-motion="off"] .bg-scan,
+[data-motion="off"] .bg-mote,
+[data-motion="reduced"] .bg-mote {
+  display: none;
+}
+
+@keyframes grid-drift { to { transform: translate3d(44px, 44px, 0); } }
+@keyframes orb-float {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to { transform: translate3d(5%, 6%, 0) scale(1.14); }
+}
+@keyframes scan-sweep {
+  0% { transform: translate3d(0, -200px, 0); opacity: 0; }
+  12% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { transform: translate3d(0, 105vh, 0); opacity: 0; }
+}
+@keyframes mote {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  15% { opacity: 0.5; }
+  85% { opacity: 0.25; }
+  100% { transform: translate3d(14px, -180px, 0); opacity: 0; }
+}
+
+/* Applied to whole <svg> elements or HTML: rotating groups inside an SVG repaints on the main thread. */
+.spin-slow { animation: spin 42s linear infinite; animation-play-state: var(--play, running); will-change: transform; }
+.spin-rev { animation: spin 64s linear infinite reverse; animation-play-state: var(--play, running); will-change: transform; }
+.spin-radar { animation: spin 2.6s linear infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pulse-dot { animation: pulse-dot 2.2s ease-in-out infinite; }
+@keyframes pulse-dot { 50% { opacity: 0.35; } }
+
+@layer components {
+  .skeleton {
+    border-radius: 8px;
+    background: linear-gradient(100deg, var(--line) 30%, var(--line-strong) 50%, var(--line) 70%);
+    background-size: 220% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+@keyframes shimmer { to { background-position: -220% 0; } }
+
+.hold-fill { transform-origin: left; transform: scaleX(0); transition: transform 90ms linear; }
+.holding .hold-fill { transform: scaleX(1); transition: transform 1100ms linear; }
+
+.row-hover:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+.screen-in { animation: screen-in 180ms ease-out backwards; }
+@keyframes screen-in {
+  from { opacity: 0.2; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: none; }
+}
+[data-motion="off"] .screen-in { animation: none; }
+
+/* Treemap tiles are lit panes of glass: colour lives in the edge and a soft inner wash. */
+.tile {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 6px;
+  background:
+    linear-gradient(158deg, color-mix(in srgb, var(--tile) 58%, transparent), color-mix(in srgb, var(--tile) 20%, transparent) 72%),
+    #070c18;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--tile) 75%, white 10%),
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    inset 0 -24px 34px -30px color-mix(in srgb, var(--tile) 80%, transparent);
+  transition: filter 120ms ease, box-shadow 120ms ease;
+}
+.tile[data-container="true"] {
+  background: linear-gradient(158deg, color-mix(in srgb, var(--tile) 20%, transparent), color-mix(in srgb, var(--tile) 7%, transparent)), #070c18;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile) 46%, transparent);
+}
+.tile:hover {
+  filter: brightness(1.28);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tile) 55%, white 45%), 0 0 22px -6px var(--tile);
+  z-index: 30 !important;
+}
+.tile-name {
+  display: block;
+  overflow: hidden;
+  padding: 3px 7px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.96);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+}
+.tile-size {
+  display: block;
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgb(255 255 255 / 0.72);
+}
+.holo-stage { perspective: 1500px; transform-style: preserve-3d; }
+.holo-plane { transform-style: preserve-3d; transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.holo-plane[data-holo="true"] { transform: rotateX(46deg) rotateZ(-11deg) scale(0.86); }
+.holo-plane[data-holo="true"] .tile {
+  transform: translateZ(var(--lift, 0px));
+  transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--tile) 80%, white 15%),
+    0 0 0 1px rgb(0 0 0 / 0.4),
+    0 16px 24px -8px color-mix(in srgb, var(--tile) 60%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-scan,
+  .bg-mote { display: none; }
+}
