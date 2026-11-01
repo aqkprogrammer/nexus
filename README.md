@@ -51,7 +51,7 @@ NEXUS runs entirely on your Mac. There is no account, server or analytics, and f
 | **Scan History** | Health, storage, CPU and memory trends, an item-level cleanup log, health reports |
 | **Settings** | Five themes, accent colors, animation intensity, exclusions, cleanup, privacy, retention |
 
-Across the app: command palette and global search (`⌘K`), keyboard shortcuts, context menus, native notifications, toasts, dry-run mode, cancellable scans, and skeleton, empty, error and permission states.
+Across the app: command palette and global search (`⌘K`), keyboard shortcuts, context menus, native notifications, toasts, dry-run mode, cancellable scans and cleanups, and skeleton, empty, error and permission states.
 
 | Shortcut | Action |
 | --- | --- |
@@ -101,7 +101,7 @@ Start a scan, watch the live discovery feed, then explore the result. Click any 
 
 ### 3. Clean safely
 
-Every destructive action in the app uses this same flow. You always see exactly what will happen, and confirming means holding the button, so a stray click can't run a cleanup.
+Every destructive action in the app uses this same flow. You always see exactly what will happen, and confirming means holding the button, so a stray click can't run a cleanup. A running cleanup can be stopped after the current item, and storage figures update as soon as it ends, with no rescan needed.
 
 | 1. Start | 2. Read-only analysis |
 | --- | --- |
@@ -344,6 +344,10 @@ sequenceDiagram
 
 Plans expire after 15 minutes, because a preview of an older disk state shouldn't be trusted.
 
+### Keeping figures current
+
+A rescan can take a minute, so `reconcile.rs` subtracts what a run actually removed from the results already held in memory, using the cleanup log as its source. Totals, categories, the map, largest files, hogs, cleaner results and duplicate groups all update at once, the Trash is measured again, and disk capacity is reread on the next tick. Items too small to have their own map entry are estimated from the plan, so adjusted scans are labelled "updated after cleanup" until the next scan.
+
 ### Duplicate detection
 
 ```mermaid
@@ -470,6 +474,7 @@ Retention is configurable, and history can be cleared from Settings.
 | `cleaner://progress`, `cleaner://done` | Percent, phase, findings, final report |
 | `duplicates://progress`, `duplicates://done` | Phase, hashing progress, final report |
 | `cleanup://progress` | Items done, current path, bytes processed |
+| `cleanup://reconciled` | Updated scan, cleaner and duplicate results after a cleanup |
 | `apps://size`, `apps://done` | Size of each application as it is measured |
 
 Errors serialize as `{ kind, message }`. Kinds are `io`, `database`, `serialization`, `safety`, `permission`, `not_found`, `invalid`, `busy`, `unavailable` and `cancelled`.
@@ -615,9 +620,9 @@ brew upgrade rust
 
 | Layer | Count | Covers |
 | --- | --- | --- |
-| Rust unit tests | 131, plus 1 opt-in | Safety rules, symlink swaps, plan execution, scanner edge cases, duplicates, health, advisor, migrations |
+| Rust unit tests | 143, plus 1 opt-in | Safety rules, symlink swaps, plan execution, scanner edge cases, duplicates, result updates, health, advisor, migrations |
 | Frontend unit tests | 17 | Treemap geometry, formatting, scoring |
-| End-to-end, real app | 26 checks, 15 disk assertions | The real binary and webview in a throwaway home, including a real cleanup |
+| End-to-end, real app | 42 checks, 27 disk assertions | The real binary and webview on a disposable disk image, including real cleanups, Stop, Empty Trash and an uninstall |
 
 ```bash
 pnpm test
@@ -631,7 +636,12 @@ pnpm test:rust
 pnpm typecheck
 ```
 
-The end-to-end test drives the real interface against the real backend, then checks what happened on disk. Everything destructive stays inside a throwaway home folder, and its hook only exists in debug builds.
+The end-to-end test drives the real interface against the real backend, then checks what happened on disk. HOME is a throwaway folder on a disposable APFS disk image, so moves to the Trash are real but land in that image's own `.Trashes` folder. Its hook only exists in debug builds.
+
+Two things are deliberately never run for real, and guards block them during a test run:
+
+- **Docker prune** acts on a whole daemon and can't be limited to test data, so the test uses a stand-in `docker` binary.
+- **Finder's Empty Trash** would permanently empty your real Trash, so unit tests run that code path against a stub instead.
 
 ```bash
 pnpm tauri build --debug --no-bundle
@@ -690,6 +700,7 @@ nexus/
 │       ├── apps/               Bundles, associated files, leftovers
 │       ├── safety.rs           Path validation
 │       ├── plan.rs             Preview and execution engine
+│       ├── reconcile.rs        Updates held results after a cleanup
 │       ├── duplicates.rs       Hashing pipeline
 │       ├── advisor.rs          Recommendation rules
 │       └── db.rs               Persistence
@@ -708,7 +719,11 @@ nexus/
 | 5 | CPU and RAM monitoring, process manager, Battery Intelligence | Done |
 | 6 | NEXUS AI, recommendations, analytics, reports | Done, with local rules |
 
-**Built but not yet exercised against a real system:** Docker prune, a real application uninstall, Finder's Empty Trash fallback, scheduled scans and launch at login. Each has unit coverage or a safety check where it can, but hasn't run for real.
+**Verified in the real app:** moves to the Trash, stopping a cleanup, emptying a readable Trash, uninstalling an application, and updating figures after a cleanup.
+
+**Tested against stand-ins only:** Docker prune, and Finder's Empty Trash fallback. Neither has run against a real Docker daemon or the real Finder, and NEXUS's parsing of `docker system df` hasn't been checked against a live daemon.
+
+**Built but not yet exercised:** scheduled scans and launch at login.
 
 **Not yet tested:** Intel Macs, and macOS versions other than 27.
 

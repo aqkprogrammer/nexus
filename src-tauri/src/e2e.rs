@@ -18,6 +18,14 @@ pub fn start(app: &App) {
     });
 }
 
+/// Gives a test time to press Stop during a cleanup that would otherwise finish instantly.
+pub fn slow_down() {
+    let delay = std::env::var("NEXUS_E2E_SLOW_MS").ok().and_then(|v| v.parse().ok());
+    if let Some(ms) = delay {
+        std::thread::sleep(Duration::from_millis(ms));
+    }
+}
+
 #[tauri::command]
 pub fn e2e_log(line: String) {
     println!("{line}");

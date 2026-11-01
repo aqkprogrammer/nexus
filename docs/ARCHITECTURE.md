@@ -26,7 +26,7 @@ React screens ── stores (Zustand) ── lib/ipc.ts ══ Tauri IPC ══ 
 - **Links:** symlinks are measured as themselves and never followed. Hard links count once. A visited set of `(device, inode)` breaks any directory cycle.
 - **Mounts:** the walk stays on one device.
 - **Memory is bounded per directory.** Each keeps its 96 largest children and folds the rest into a "Smaller items" node. A scan of 5.7 million files persists as a tree of under 1 MB.
-- **Cache:** directories with many small files are remembered by mtime in `dir_cache`. A rescan reuses them but still visits their subfolders, so deeper changes are seen. Deep rescan ignores the cache.
+- **Cache:** directories with many small files are remembered by mtime in `dir_cache`. A rescan reuses them but still visits their subfolders, so deeper changes are seen. Reused entries are carried forward, so the cache survives each save. Deep rescan ignores the cache.
 - **Failure:** an unreadable entry is counted, not fatal, and appears in the summary.
 
 ## Destructive operations
@@ -52,6 +52,10 @@ execute_plan(id, confirmed) ─▶ safety::validate again ─▶ Trash / delete 
 | `Application` | App bundle, or a direct Library entry NEXUS associated with it | Trash |
 
 Parents are resolved and the item itself is not, which keeps a symlink swapped in after planning from redirecting the operation. Absolute protections run before any policy. Browser profile folders are default-deny: only recognised cache folders inside them can be reached.
+
+A running plan can be stopped: the current item finishes, and the rest are logged as skipped.
+
+After a run, `reconcile.rs` subtracts what the cleanup log says was removed from the held scan, cleaner and duplicate results, so screens stay right without a rescan. Items too small to have their own tree node are estimated from the plan, so the summary records `adjusted_at` and the UI labels it until the next scan.
 
 An item belongs to one cleaner target. A possible leftover is removed from preselected targets, so anything needing review stays review-only.
 
@@ -83,5 +87,5 @@ SQLite lives in the app data folder, with migrations in `src-tauri/migrations` t
 | --- | --- |
 | Rust unit tests | Safety rules, symlink swaps, plan execution, scanner edge cases, duplicates, health, advisor, migrations |
 | Vitest | Treemap geometry, formatting, scoring |
-| `e2e/run.sh` | The real binary and webview in a throwaway home, with disk assertions and on-screen checks for every drawer |
+| `e2e/run.sh` | The real binary and webview on a disposable disk image, with disk assertions and on-screen checks for every drawer. Docker uses a stand-in, and guards stop test runs reaching real Docker or Finder's Empty Trash |
 | `examples/probe.rs` | Read-only check of native collectors on real hardware |

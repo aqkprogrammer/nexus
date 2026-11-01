@@ -1,20 +1,23 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use super::notify;
 use crate::advisor::gb;
 use crate::apps;
 use crate::cleaner::catalog::Risk;
+use crate::cleaner::{self, docker};
 use crate::duplicates;
 use crate::error::{NexusError, Result};
 use crate::jobs::CancelToken;
 use crate::plan::{self, Action, ExecResult, Plan, PlanInput, PlanMeta};
+use crate::reconcile::{self, Removed};
 use crate::safety::Policy;
 use crate::state::AppState;
-use crate::storage::scanner::measure;
+use crate::storage::scanner::{measure, ScanResult};
 use crate::util::{allocated_size, home_dir};
 
 fn store_plan(state: &AppState, meta: PlanMeta, inputs: Vec<PlanInput>) -> Plan {
@@ -269,6 +272,55 @@ pub fn discard_plan(state: State<'_, AppState>, plan_id: u64) {
     state.plans.lock().remove(&plan_id);
 }
 
+/// Brings every held result in line with what a run removed, so screens stay right
+/// without a rescan. The Trash is measured again because it just changed.
+fn refresh_results(app: &AppHandle, state: &AppState, removed: &Removed, docker_changed: bool) {
+    state.telemetry.request_volume_refresh();
+    let home = home_dir();
+
+    let held_scan = state.storage.read().clone();
+    let summary = held_scan.filter(|_| !removed.is_empty()).map(|current| {
+        let mut next = (*current).clone();
+        reconcile::scan(&mut next, removed, &home);
+        let persisted = ScanResult { summary: next.summary.clone(), tree: next.tree.pruned(0) };
+        if let (Ok(rows), Ok(bytes)) = (state.db.list_scans(Some("storage"), 1), serde_json::to_vec(&persisted)) {
+            if let Some(row) = rows.first() {
+                let _ = state.db.save_tree(row.id, &bytes);
+            }
+        }
+        let next = Arc::new(next);
+        *state.storage.write() = Some(next.clone());
+        next.summary.clone()
+    });
+
+    let held_cleaner = state.cleaner.read().clone();
+    let cleaner = held_cleaner.map(|current| {
+        let mut next = (*current).clone();
+        reconcile::cleaner(&mut next, removed);
+        next.trash = cleaner::scan_trash(&home, &CancelToken::default());
+        if docker_changed {
+            next.docker = docker::status();
+        }
+        let next = Arc::new(next);
+        *state.cleaner.write() = Some(next.clone());
+        next
+    });
+
+    let held_duplicates = state.duplicates.read().clone();
+    let duplicates = held_duplicates.map(|current| {
+        let mut next = (*current).clone();
+        reconcile::duplicates(&mut next, removed);
+        let next = Arc::new(next);
+        *state.duplicates.write() = Some(next.clone());
+        next
+    });
+
+    let _ = app.emit(
+        "cleanup://reconciled",
+        serde_json::json!({ "summary": summary, "cleaner": cleaner, "duplicates": duplicates }),
+    );
+}
+
 /// `confirmed` must be sent explicitly; a plan never runs from a preview call alone.
 #[tauri::command(async)]
 pub fn execute_plan(app: AppHandle, state: State<'_, AppState>, plan_id: u64, confirmed: bool) -> Result<ExecResult> {
@@ -285,14 +337,25 @@ pub fn execute_plan(app: AppHandle, state: State<'_, AppState>, plan_id: u64, co
     let progress_app = app.clone();
     let execution = plan::execute(&plan, &ctx, &guard.token, move |progress| {
         let _ = progress_app.emit("cleanup://progress", progress);
+        #[cfg(debug_assertions)]
+        crate::e2e::slow_down();
     })?;
     let run_id = state.db.insert_cleanup_run(&execution.run, &execution.log)?;
+    let removed = Removed::new(
+        execution
+            .log
+            .iter()
+            .filter(|item| matches!(item.outcome.as_str(), "trashed" | "deleted"))
+            .map(|item| (item.path.clone(), item.size)),
+    );
+    let docker_changed = execution.log.iter().any(|item| item.outcome == "pruned");
     let run = execution.run;
-    if !run.dry_run {
-        *app.state::<AppState>().cleaner.write() = None;
+    if !run.dry_run && run.items_ok > 0 {
+        refresh_results(&app, &state, &removed, docker_changed);
+        let title = if run.status == "cancelled" { "Cleanup stopped" } else { "Cleanup complete" };
         notify(
             &app,
-            "Cleanup complete",
+            title,
             &format!("{} freed, {} moved to Trash.", gb(run.bytes_freed), gb(run.bytes_trashed)),
         );
     }

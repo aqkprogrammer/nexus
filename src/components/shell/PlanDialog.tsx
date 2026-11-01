@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, CircleSlash, FlaskConical, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { CheckCircle2, CircleSlash, FlaskConical, OctagonPause, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { baseName, bytes, count } from "../../lib/format";
 import { useApp, usePlan } from "../../stores";
 import type { PlanItem } from "../../lib/types";
@@ -42,7 +42,7 @@ function ActionLabel({ item }: { item: PlanItem }) {
 }
 
 export function PlanDialog() {
-  const { plan, stage, progress, result, setDryRun, execute, close } = usePlan();
+  const { plan, stage, progress, result, stopping, setDryRun, execute, stop, close } = usePlan();
   const navigate = useApp((s) => s.navigate);
   const groups = useMemo(() => {
     const map = new Map<string, PlanItem[]>();
@@ -68,16 +68,22 @@ export function PlanDialog() {
 
             {stage === "done" && result ? (
               <div className="flex flex-col items-center gap-3 px-8 py-10 text-center">
-                <CheckCircle2 size={38} strokeWidth={1.4} className="text-good" />
+                {result.status === "cancelled"
+                  ? <OctagonPause size={38} strokeWidth={1.4} className="text-warn" />
+                  : <CheckCircle2 size={38} strokeWidth={1.4} className="text-good" />}
                 <h3 className="display text-2xl text-ink">
-                  {result.dryRun
+                  {result.status === "cancelled"
+                    ? "Cleanup stopped"
+                    : result.dryRun
                     ? `Dry run: ${bytes(result.bytesFreed + result.bytesTrashed)} would be recovered`
                     : result.bytesFreed > 0
                       ? `${bytes(result.bytesFreed)} recovered`
                       : `${bytes(result.bytesTrashed)} moved to Trash`}
                 </h3>
                 <p className="max-w-lg text-soft">
-                  {result.dryRun
+                  {result.status === "cancelled"
+                    ? `${count(result.itemsOk)} finished before you stopped. ${count(result.itemsSkipped)} left untouched.`
+                    : result.dryRun
                     ? "Nothing was changed. Every item was validated and written to the cleanup log."
                     : result.bytesTrashed > 0
                       ? `${bytes(result.bytesTrashed)} is in the Trash and can be restored. That space returns when the Trash is emptied.`
@@ -154,13 +160,16 @@ export function PlanDialog() {
 
                 <footer className="flex items-center gap-4 border-t border-line px-6 py-3.5">
                   {stage === "running" ? (
-                    <div className="flex-1">
+                    <>
+                    <div className="min-w-0 flex-1">
                       <div className="mb-1.5 flex justify-between text-xs">
                         <span className="mono truncate text-soft">{progress?.current ? baseName(progress.current) : "Starting"}</span>
                         <span className="mono text-soft">{progress?.done ?? 0} / {progress?.total ?? plan.items.length}</span>
                       </div>
                       <Bar value={progress ? (progress.done / Math.max(progress.total, 1)) * 100 : 0} />
                     </div>
+                    <Button disabled={stopping} onClick={() => void stop()}>{stopping ? "Stopping…" : "Stop after this item"}</Button>
+                    </>
                   ) : (
                     <>
                       <label className="flex items-center gap-2 text-xs text-soft">

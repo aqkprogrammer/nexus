@@ -479,6 +479,7 @@ mod tests {
             directories: 0,
             inaccessible: 0,
             reused_directories: 0,
+            adjusted_at: None,
             categories: Vec::<CategoryStat>::new(),
             over_100_mb: (0, 0),
             over_1_gb: (0, 0),

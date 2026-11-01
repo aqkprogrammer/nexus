@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { squarify, type Rect } from "../../lib/treemap";
 import { CATEGORY_COLOR, CATEGORY_LABEL } from "../../lib/score";
 import { api } from "../../lib/ipc";
+import { useStorage } from "../../stores";
 import { bytes, count } from "../../lib/format";
 import { Segmented, Skeleton } from "../ui";
 import type { Category, TreeNode } from "../../lib/types";
@@ -51,6 +52,7 @@ export function HoloMap({ onSelect, onContext, height }: {
   const [width, setWidth] = useState(0);
 
   const current = trail[trail.length - 1];
+  const scanVersion = useStorage((s) => s.summary?.adjustedAt ?? s.summary?.finishedAt);
 
   useLayoutEffect(() => {
     if (!stage.current) return;
@@ -64,13 +66,18 @@ export function HoloMap({ onSelect, onContext, height }: {
     setLoading(true);
     api.getStorageTree(current.path, 3).then((tree) => {
       if (!alive) return;
+      // The folder being viewed may have just been cleaned up.
+      if (!tree && current.path) {
+        setTrail((t) => t.slice(0, 1));
+        return;
+      }
       setNode(tree);
       setLoading(false);
     });
     return () => {
       alive = false;
     };
-  }, [current.path]);
+  }, [current.path, scanVersion]);
 
   const tiles = useMemo(() => {
     if (!node?.children || width === 0) return [];

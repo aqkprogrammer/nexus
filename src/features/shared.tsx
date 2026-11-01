@@ -51,10 +51,7 @@ export function copyPath(path: string) {
 
 /** Items from explorer-style views always go through a Trash-only preview. */
 export function reviewTrash(paths: string[], source: string, title: string, onDone?: () => void) {
-  void usePlan.getState().open((dry) => api.preparePathsPlan(source, title, paths, dry), () => {
-    toast.info("Storage changed", "Scan again to refresh these figures.");
-    onDone?.();
-  });
+  void usePlan.getState().open((dry) => api.preparePathsPlan(source, title, paths, dry), onDone);
 }
 
 export function itemMenu(path: string, source: string, onDetails?: () => void, onDone?: () => void) {

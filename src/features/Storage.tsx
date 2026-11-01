@@ -100,7 +100,7 @@ function Insights({ summary }: { summary: ScanSummary }) {
   ];
   return (
     <Panel title="Scan insights" className="col-span-12 xl:col-span-5"
-      aside={<span className="mono text-[10px] text-faint">{ago(summary.finishedAt)} · {((summary.finishedAt - summary.startedAt) / 1000).toFixed(1)}s</span>}>
+      aside={<span className="mono text-[10px] text-faint">{ago(summary.finishedAt)} · {((summary.finishedAt - summary.startedAt) / 1000).toFixed(1)}s{summary.adjustedAt ? " · updated after cleanup" : ""}</span>}>
       <div className="grid grid-cols-2 gap-2.5">
         {stats.map((s) => (
           <div key={s.label} className="rounded-xl border border-line bg-black/15 px-3.5 py-2.5">

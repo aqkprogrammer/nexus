@@ -19,7 +19,7 @@ use crate::db::DirCacheEntry;
 use crate::jobs::CancelToken;
 use crate::util::{allocated_size, now_ms, path_string};
 
-const MIB: u64 = 1024 * 1024;
+pub const MIB: u64 = 1024 * 1024;
 /// Children retained per directory; the remainder collapses into one aggregate node.
 const MAX_CHILDREN: usize = 96;
 /// Items below this stay out of the tree unless their parent is small enough to list.
@@ -102,6 +102,9 @@ pub struct ScanSummary {
     pub directories: u64,
     pub inaccessible: u64,
     pub reused_directories: u64,
+    /// Set when a cleanup has adjusted these figures since the scan finished.
+    #[serde(default)]
+    pub adjusted_at: Option<i64>,
     pub categories: Vec<CategoryStat>,
     pub over_100_mb: (u64, u64),
     pub over_1_gb: (u64, u64),
@@ -353,6 +356,8 @@ fn cached_listing(ctx: &Ctx<'_>, path: &Path, meta: &fs::Metadata, dev: u64) -> 
                 .then(|| (child, name.clone()))
         })
         .collect();
+    // Carried forward, or the next save would forget every folder that was reused here.
+    ctx.fresh_cache.lock().push((key.to_owned(), entry.clone()));
     ctx.reused.fetch_add(1, Ordering::Relaxed);
     ctx.files.fetch_add(entry.direct_files, Ordering::Relaxed);
     ctx.bytes.fetch_add(entry.direct_size, Ordering::Relaxed);
@@ -602,6 +607,7 @@ pub fn run(
         directories: ctx.dirs.load(Ordering::Relaxed),
         inaccessible: ctx.denied.load(Ordering::Relaxed),
         reused_directories: ctx.reused.load(Ordering::Relaxed),
+        adjusted_at: None,
         categories: Category::ALL
             .iter()
             .map(|c| CategoryStat {
@@ -851,7 +857,7 @@ mod tests {
         assert_eq!(second.summary.reused_directories, 1);
         assert_eq!(second.summary.files, first.summary.files);
         assert_eq!(second.summary.total_bytes, first.summary.total_bytes);
-        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 1);
 
         let (_, cache) = scan(options(dir.path()));
         std::thread::sleep(Duration::from_millis(10));
@@ -861,6 +867,31 @@ mod tests {
         let (third, _) = scan(opts);
         assert_eq!(third.summary.reused_directories, 0);
         assert_eq!(third.summary.files, 61);
+    }
+
+    #[test]
+    fn a_rescan_keeps_unchanged_folders_in_the_cache() {
+        let dir = tempdir().unwrap();
+        for i in 0..60 {
+            write(&dir.path().join(format!("stable/f{i}.bin")), 4096);
+            write(&dir.path().join(format!("busy/f{i}.bin")), 4096);
+        }
+        let (_, cache) = scan(options(dir.path()));
+        assert_eq!(cache.len(), 2);
+
+        std::thread::sleep(Duration::from_millis(10));
+        write(&dir.path().join("busy/new.bin"), 4096);
+        let mut opts = options(dir.path());
+        opts.cache = Some(cache.into_iter().collect());
+        let (second, cache) = scan(opts);
+        assert_eq!(second.summary.reused_directories, 1);
+        assert_eq!(cache.len(), 2, "the reused folder must stay cached");
+
+        let mut opts = options(dir.path());
+        opts.cache = Some(cache.into_iter().collect());
+        let (third, _) = scan(opts);
+        assert_eq!(third.summary.reused_directories, 2);
+        assert_eq!(third.summary.files, 121);
     }
 
     #[test]

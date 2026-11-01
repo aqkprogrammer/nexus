@@ -95,50 +95,100 @@
 
     const settings = await invoke("get_settings");
     await invoke("save_settings", { settings: { ...settings, cleanupMode: "delete" } });
+    const home = (await invoke("get_permissions")).home;
+    const cleanerReady = async () => {
+      await sleep(500);
+      await until(async () => !(await invoke("job_running", { kind: "cleaner" })), "cleaner scan");
+      await until(() => button("Review cleanup"), "cleaner results");
+      await sleep(300);
+    };
 
     await go("Smart Cleaner");
     await until(() => button("Scan System"), "scan button").then((b) => b.click());
     const report = await until(() => invoke("get_cleaner_report"), "cleaner scan");
     await check("cleaner found the fixture cache", report.targets.some((t) => t.id === "app-caches" && t.items.length > 0));
     await check("developer caches are not preselected", report.targets.filter((t) => t.group === "developer").every((t) => !t.selectedByDefault));
+    await check("Docker preview comes from Docker's own report", report.docker.resources.some((r) => r.id === "builder" && r.reclaimable === 500000000));
     await until(() => button("Review cleanup"), "review button");
     await shot("06-cleaner-results");
 
     button("Review cleanup").click();
     await until(() => button("Hold to", false), "deletion preview");
     await shot("07-deletion-preview");
-    button("Dry run", false);
+    await hold();
+    await until(() => button("Stop after this item"), "stop button");
+    await until(() => /[1-9] \/ \d/.test(document.querySelector("[role=dialog] footer")?.textContent ?? ""), "first item to finish");
+    button("Stop after this item").click();
+    await until(() => button("Done"), "stopped result");
+    await shot("08-cleanup-stopped");
+    const stopped = (await invoke("list_cleanup_runs", { limit: 1 }))[0];
+    await check("Stop ends a cleanup early", stopped.status === "cancelled" && stopped.itemsOk > 0 && stopped.itemsSkipped > 0, JSON.stringify(stopped));
+    await check("the result says it was stopped", document.body.textContent.includes("Cleanup stopped"));
+    button("Done").click();
+    await cleanerReady();
+
+    document.querySelector('[aria-label="Select Build cache"]').click();
+    await sleep(200);
+    button("Review cleanup").click();
+    await until(() => button("Hold to", false), "second preview");
     await hold();
     await until(() => button("Done"), "cleanup result");
     await shot("08-cleanup-done");
-    const runs = await invoke("list_cleanup_runs", { limit: 5 });
-    await check("cleanup recorded to the log", runs.length === 1 && runs[0].itemsOk > 0 && runs[0].itemsFailed === 0, JSON.stringify(runs[0]));
+    const finished = (await invoke("list_cleanup_runs", { limit: 1 }))[0];
+    await check("a rerun finishes what was left", finished.status === "completed" && finished.itemsFailed === 0, JSON.stringify(finished));
     button("Done").click();
-    await until(async () => (await invoke("job_running", { kind: "cleaner" })) === false, "rescan");
+    await cleanerReady();
 
-    await invoke("start_duplicate_scan", { roots: [(await invoke("get_permissions")).home], excluded: [], minSize: 1024 });
+    const withTrash = await invoke("get_cleaner_report");
+    await check("Trash contents are listed", withTrash.trash.accessible && withTrash.trash.count === 1, JSON.stringify(withTrash.trash.count));
+    button("Empty Trash…").click();
+    await until(() => button("Hold to", false), "Empty Trash preview");
+    await hold();
+    await until(() => button("Done"), "Empty Trash result");
+    button("Done").click();
+    await cleanerReady();
+    await check("Trash reads empty afterwards", (await invoke("get_cleaner_report")).trash.count === 0);
+
+    const beforeClip = await invoke("get_storage_summary");
+    const clip = `${home}/Movies/clip.mov`;
+    await check("the clip starts in the scan results", beforeClip.topFiles.some((f) => f.path === clip));
+    const clipPlan = await invoke("prepare_paths_plan", { source: "test", title: "Clip", paths: [clip], dry: false });
+    await invoke("execute_plan", { planId: clipPlan.id, confirmed: true });
+    const afterClip = await invoke("get_storage_summary");
+    await check("figures update without a rescan",
+      !afterClip.topFiles.some((f) => f.path === clip) && !afterClip.hogs.some((h) => h.path === clip)
+        && afterClip.over100Mb[0] === beforeClip.over100Mb[0] - 1 && beforeClip.totalBytes - afterClip.totalBytes >= 139e6 && afterClip.adjustedAt != null,
+      `${beforeClip.totalBytes} -> ${afterClip.totalBytes}`);
+    const movies = await invoke("get_storage_tree", { path: `${home}/Movies`, depth: 1 });
+    await check("the map loses the removed file", !(movies?.children ?? []).some((c) => c.name === "clip.mov"));
+    await go("Storage Intelligence");
+    await until(() => document.body.textContent.includes("updated after cleanup"), "adjusted label");
+    await check("adjusted figures are labelled", true);
+
+    await invoke("start_duplicate_scan", { roots: [home], excluded: [], minSize: 1024 });
     const dupes = await until(() => invoke("get_duplicate_report"), "duplicate scan");
     await check("duplicates found", dupes.groups.length === 1 && dupes.groups[0].files.length === 3, `${dupes.groups.length} groups`);
     const all = dupes.groups[0].files.map((f) => f.path);
     const blocked = await invoke("prepare_duplicate_plan", { paths: all, dry: true }).catch((e) => e);
     await check("removing every copy is refused", blocked.kind === "safety", blocked.message);
-    const dry = await invoke("prepare_duplicate_plan", { paths: all.slice(1), dry: true });
-    await check("duplicate plan is trash-only", dry.items.every((i) => i.action === "trash"));
-    await invoke("execute_plan", { planId: dry.id, confirmed: true });
-
-    const escape = await invoke("prepare_paths_plan", {
-      source: "test", title: "Escape", paths: ["/etc/hosts", "/System/Library", `${settings.approvedRoots[0]}/.ssh/id_ed25519`], dry: false,
-    });
-    await check("protected paths are blocked in plans", escape.blockedCount === 3, escape.items.map((i) => i.blocked).join(" | "));
-    const unconfirmed = await invoke("execute_plan", { planId: dry.id + 1, confirmed: false }).catch((e) => e);
-    await check("execution requires confirmation", unconfirmed.kind === "safety");
-    await invoke("discard_plan", { planId: escape.id });
-
     await go("Duplicate Finder");
     await shot("09-duplicates");
     [...document.querySelectorAll("main button")].find((b) => b.textContent.includes("copy.bin")).click();
     await drawerOnScreen("duplicate compare");
     await closeDrawer();
+    const dupePlan = await invoke("prepare_duplicate_plan", { paths: all.slice(1), dry: false });
+    await check("duplicate plan is trash-only", dupePlan.items.every((i) => i.action === "trash"));
+    await invoke("execute_plan", { planId: dupePlan.id, confirmed: true });
+    await check("the group clears once one copy is left", (await invoke("get_duplicate_report")).groups.length === 0);
+
+    const escape = await invoke("prepare_paths_plan", {
+      source: "test", title: "Escape", paths: ["/etc/hosts", "/System/Library", `${settings.approvedRoots[0]}/.ssh/id_ed25519`], dry: false,
+    });
+    await check("protected paths are blocked in plans", escape.blockedCount === 3, escape.items.map((i) => i.blocked).join(" | "));
+    const unconfirmed = await invoke("execute_plan", { planId: escape.id, confirmed: false }).catch((e) => e);
+    await check("execution requires confirmation", unconfirmed.kind === "safety");
+    await invoke("discard_plan", { planId: escape.id });
+
     await go("Performance Monitor");
     await until(() => document.querySelectorAll("main button.row-hover").length > 20, "process table");
     await shot("10-performance");
@@ -159,6 +209,23 @@
     await closeDrawer();
     const apps = await invoke("list_apps");
     await check("applications listed with metadata", apps.some((a) => a.bundleId));
+
+    [...document.querySelectorAll("main button.row-hover")].find((b) => b.textContent.includes("DisposableTool")).click();
+    await drawerOnScreen("uninstall review");
+    const supportBox = `[aria-label="Include ${home}/Library/Application Support/DisposableTool"]`;
+    (await until(() => document.querySelector(supportBox), "associated files")).click();
+    await sleep(200);
+    button("Review uninstall").click();
+    await until(() => button("Hold to", false), "uninstall preview");
+    await shot("11b-uninstall-preview");
+    await hold();
+    await until(() => button("Done"), "uninstall result");
+    const uninstall = (await invoke("list_cleanup_runs", { limit: 1 }))[0];
+    await check("uninstall moved the app and chosen data to the Trash", uninstall.source === "uninstall" && uninstall.itemsOk === 2 && uninstall.bytesFreed === 0, JSON.stringify(uninstall));
+    button("Done").click();
+    await sleep(600);
+    await check("the app leaves the list", !(await invoke("list_apps")).some((a) => a.name === "DisposableTool"));
+
     button("Show macOS apps").click();
     await sleep(1800);
     await shot("12-applications");
@@ -171,6 +238,18 @@
     await shot("15-history");
     await invoke("export_report", { path: `${settings.approvedRoots[0]}/report.md` });
     await check("health report exported", true);
+
+    const rescan = async () => {
+      await invoke("start_storage_scan", { deep: false });
+      await sleep(400);
+      await until(async () => !(await invoke("job_running", { kind: "storage" })), "rescan", 120000);
+      return invoke("get_storage_summary");
+    };
+    const second = await rescan();
+    const third = await rescan();
+    await check("rescans reuse unchanged folders", second.reusedDirectories > 0, second.reusedDirectories);
+    await check("the cache survives a rescan", third.reusedDirectories >= second.reusedDirectories, `${second.reusedDirectories} then ${third.reusedDirectories}`);
+    await check("cached and fresh totals agree", third.files === second.files && third.totalBytes === second.totalBytes);
   } catch (error) {
     failures += 1;
     await log(`FAIL harness: ${error?.message ?? JSON.stringify(error)} [screen: ${document.querySelector("h1")?.textContent}]`);

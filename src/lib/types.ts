@@ -82,7 +82,7 @@ export interface CategoryStat { category: Category; bytes: number }
 export interface OldFileStat { cutoffMonths: number; bytes: number; files: number; downloadsBytes: number; downloadsFiles: number }
 export interface ScanSummary {
   startedAt: number; finishedAt: number; roots: string[]; completed: boolean; totalBytes: number; files: number;
-  directories: number; inaccessible: number; reusedDirectories: number; categories: CategoryStat[];
+  directories: number; inaccessible: number; reusedDirectories: number; adjustedAt: number | null; categories: CategoryStat[];
   over100Mb: [number, number]; over1Gb: [number, number]; old: OldFileStat; topFiles: FileItem[]; hogs: HogItem[];
 }
 export interface Discovery { path: string; size: number }
@@ -123,6 +123,9 @@ export interface PlanItem {
 export interface Plan {
   id: number; source: string; title: string; dryRun: boolean; createdAt: number; items: PlanItem[];
   trashBytes: number; deleteBytes: number; blockedCount: number; warnings: string[];
+}
+export interface Reconciled {
+  summary: ScanSummary | null; cleaner: CleanerReport | null; duplicates: DuplicateReport | null;
 }
 export interface ExecProgress { done: number; total: number; current: string; bytes: number }
 export interface ExecResult {

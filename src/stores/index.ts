@@ -220,11 +220,13 @@ interface PlanState {
   stage: PlanStage;
   progress: T.ExecProgress | null;
   result: T.ExecResult | null;
+  stopping: boolean;
   rebuild: ((dry: boolean) => Promise<T.Plan>) | null;
   onDone: (() => void) | null;
   open: (build: (dry: boolean) => Promise<T.Plan>, onDone?: () => void) => Promise<void>;
   setDryRun: (dry: boolean) => Promise<void>;
   execute: () => Promise<void>;
+  stop: () => Promise<void>;
   close: () => void;
 }
 
@@ -234,6 +236,7 @@ export const usePlan = create<PlanState>((set, get) => ({
   stage: "preview",
   progress: null,
   result: null,
+  stopping: false,
   rebuild: null,
   onDone: null,
   open: async (build, onDone) => {
@@ -257,7 +260,7 @@ export const usePlan = create<PlanState>((set, get) => ({
   execute: async () => {
     const { plan } = get();
     if (!plan) return;
-    set({ stage: "running" });
+    set({ stage: "running", stopping: false });
     try {
       const result = await api.executePlan(plan.id);
       set({ stage: "done", result });
@@ -266,11 +269,15 @@ export const usePlan = create<PlanState>((set, get) => ({
       toast.error("Cleanup did not run", error);
     }
   },
+  stop: async () => {
+    set({ stopping: true });
+    await api.cancelJob("cleanup");
+  },
   close: () => {
     const { plan, stage, onDone } = get();
     if (plan && stage === "preview") void api.discardPlan(plan.id);
     if (stage === "done") onDone?.();
-    set({ plan: null, stage: "preview", progress: null, result: null, rebuild: null, onDone: null });
+    set({ plan: null, stage: "preview", progress: null, result: null, stopping: false, rebuild: null, onDone: null });
   },
 }));
 
@@ -328,6 +335,17 @@ export async function bootstrap() {
   });
 
   on<T.ExecProgress>("cleanup://progress", (progress) => usePlan.setState({ progress }));
+  on<T.Reconciled>("cleanup://reconciled", ({ summary, cleaner, duplicates }) => {
+    if (summary) useStorage.setState({ summary });
+    if (cleaner) {
+      const ids = new Set(cleaner.targets.flatMap((t) => t.items.map((i) => i.id)));
+      useCleaner.setState((s) => ({ report: cleaner, selected: new Set([...s.selected].filter((id) => ids.has(id))) }));
+    }
+    if (duplicates) {
+      const paths = new Set(duplicates.groups.flatMap((g) => g.files.map((f) => f.path)));
+      useDuplicates.setState((s) => ({ report: duplicates, selected: new Set([...s.selected].filter((p) => paths.has(p))) }));
+    }
+  });
 
   const [settings, permissions, overview, sample, history, summary, cleaner, duplicates] = await Promise.all([
     api.getSettings(), api.getPermissions(), api.getOverview(), api.getTelemetry(), api.getHistory(),

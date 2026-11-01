@@ -79,9 +79,7 @@ fn run_storage_scan(app: &AppHandle, roots: Vec<PathBuf>, deep: bool, guard: Job
     });
 
     if result.summary.completed {
-        if !cache_entries.is_empty() {
-            let _ = state.db.replace_dir_cache(&cache_entries, now_ms());
-        }
+        let _ = state.db.replace_dir_cache(&cache_entries, now_ms());
         let volume = state.telemetry.latest().map(|s| s.volume);
         let summary = &result.summary;
         let id = state.db.insert_scan(&ScanRecord {

@@ -91,6 +91,7 @@ pub struct MetricRow {
     pub performance_score: f64,
 }
 
+#[derive(Clone)]
 pub struct DirCacheEntry {
     pub mtime_ns: i64,
     pub direct_size: u64,

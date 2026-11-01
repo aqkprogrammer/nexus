@@ -111,7 +111,7 @@ const file = (path: string, size: number, kind: T.FileKind, category: T.Category
 
 const summary: T.ScanSummary = {
   startedAt: Date.now() - 300_000, finishedAt: Date.now() - 280_000, roots: settings.approvedRoots, completed: true,
-  totalBytes: 363 * GB, files: 2_184_411, directories: 412_081, inaccessible: 38, reusedDirectories: 18_204,
+  totalBytes: 363 * GB, files: 2_184_411, directories: 412_081, inaccessible: 38, reusedDirectories: 18_204, adjustedAt: null,
   categories: CATEGORIES.map(([category, bytes]) => ({ category, bytes })),
   over100Mb: [212, 148 * GB], over1Gb: [31, 96 * GB],
   old: { cutoffMonths: 12, bytes: 84 * GB, files: 41_033, downloadsBytes: 18.4 * GB, downloadsFiles: 214 },
@@ -297,6 +297,7 @@ function listing(path: string): T.Listing {
 }
 
 let planId = 0;
+let cleanupStopped = false;
 const plans = new Map<number, T.Plan>();
 
 function plan(source: string, title: string, items: T.PlanItem[], dryRun: boolean): T.Plan {
@@ -322,7 +323,7 @@ export async function mockInvoke(command: string, args: Record<string, unknown> 
     case "get_permissions": return { fullDiskAccess: "denied", home: "/Users/demo", suggestedRoots: ["/Users/demo", "/Applications"] };
     case "open_privacy_settings": case "open_activity_monitor": case "reveal_in_finder": case "discard_plan":
     case "clear_history": case "export_report": case "terminate_process": return null;
-    case "cancel_job": return true;
+    case "cancel_job": cleanupStopped = args.kind === "cleanup"; return true;
     case "get_overview": return {
       modelName: "MacBook Pro", modelIdentifier: "Mac16,1", chip: "Apple M4", architecture: "aarch64", cpuBrand: "Apple M4",
       physicalCores: 10, logicalCores: 10, performanceCores: 4, efficiencyCores: 6, memoryTotal: 24 * GB, osName: "macOS", osVersion: "27.0.1",
@@ -398,13 +399,16 @@ export async function mockInvoke(command: string, args: Record<string, unknown> 
     case "prepare_uninstall": return plan("uninstall", "Uninstall app", [{ path: args.appPath as string, size: 2 * GB, action: "trash", policy: "application", risk: "medium", group: "Application", blocked: null }], args.dry as boolean);
     case "execute_plan": {
       const current = plans.get(args.planId as number)!;
-      for (let i = 0; i < current.items.length; i += 1) {
-        emit("cleanup://progress", { done: i, total: current.items.length, current: current.items[i].path, bytes: 0 } satisfies T.ExecProgress);
+      cleanupStopped = false;
+      let done = 0;
+      for (; done < current.items.length && !cleanupStopped; done += 1) {
+        emit("cleanup://progress", { done, total: current.items.length, current: current.items[done].path, bytes: 0 } satisfies T.ExecProgress);
         await pause(160);
       }
+      const share = done / Math.max(current.items.length, 1);
       return {
-        runId: 2, dryRun: current.dryRun, status: "completed", bytesFreed: current.deleteBytes, bytesTrashed: current.trashBytes,
-        itemsOk: current.items.length, itemsFailed: 0, itemsSkipped: 0, failures: [],
+        runId: 2, dryRun: current.dryRun, status: cleanupStopped ? "cancelled" : "completed", bytesFreed: current.deleteBytes * share, bytesTrashed: current.trashBytes * share,
+        itemsOk: done, itemsFailed: 0, itemsSkipped: current.items.length - done, failures: [],
       } satisfies T.ExecResult;
     }
     default: throw new Error(`Mock has no handler for ${command}`);

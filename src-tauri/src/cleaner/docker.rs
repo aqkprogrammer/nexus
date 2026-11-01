@@ -30,6 +30,11 @@ pub struct DockerStatus {
 }
 
 fn binary() -> Option<PathBuf> {
+    // Prune acts on a whole daemon, so a test run may only ever talk to its stand-in.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("NEXUS_E2E_SCRIPT").is_some() {
+        return std::env::var_os("NEXUS_E2E_DOCKER").map(PathBuf::from);
+    }
     // Apps launched from Finder do not inherit the shell's PATH.
     [
         PathBuf::from("/usr/local/bin/docker"),

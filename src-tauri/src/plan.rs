@@ -182,7 +182,16 @@ fn delete_item(path: &Path) -> Result<()> {
 }
 
 fn finder_empty_trash() -> Result<()> {
-    let mut command = Command::new("/usr/bin/osascript");
+    // Finder empties the real Trash for good, whatever HOME says, so tests can never reach it.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("NEXUS_E2E_SCRIPT").is_some() {
+        return Err(NexusError::Safety("Test runs must not empty the real Trash.".into()));
+    }
+    empty_trash_with(Path::new("/usr/bin/osascript"))
+}
+
+fn empty_trash_with(osascript: &Path) -> Result<()> {
+    let mut command = Command::new(osascript);
     command.args(["-e", "tell application \"Finder\" to empty trash"]);
     match run_with_timeout(command, Duration::from_secs(120)) {
         Some(output) if output.status.success() => Ok(()),
@@ -481,6 +490,63 @@ mod tests {
         assert_eq!(exec.run.items_failed, 0);
         assert_eq!(exec.run.items_skipped, 1);
         assert_eq!(exec.log[0].outcome, "gone");
+    }
+
+    fn stub(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("stub.sh");
+        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[test]
+    fn finder_fallback_sends_the_expected_script() {
+        let dir = tempdir().unwrap();
+        let log = dir.path().join("args");
+        let script = stub(dir.path(), &format!("printf '%s\\n' \"$@\" > '{}'", log.display()));
+        empty_trash_with(&script).unwrap();
+        let args = fs::read_to_string(log).unwrap();
+        assert_eq!(args, "-e\ntell application \"Finder\" to empty trash\n");
+    }
+
+    #[test]
+    fn a_refused_finder_request_reports_why() {
+        let dir = tempdir().unwrap();
+        let script = stub(dir.path(), "echo 'Not authorized to send Apple events' >&2\nexit 1");
+        let error = empty_trash_with(&script).unwrap_err();
+        assert!(matches!(error, NexusError::Permission(_)));
+        assert!(error.to_string().contains("Not authorized"));
+    }
+
+    #[test]
+    fn finder_is_unreachable_during_a_test_run() {
+        std::env::set_var("NEXUS_E2E_SCRIPT", "guard-test");
+        let result = finder_empty_trash();
+        std::env::remove_var("NEXUS_E2E_SCRIPT");
+        assert!(matches!(result, Err(NexusError::Safety(_))));
+    }
+
+    #[test]
+    fn stopping_midway_finishes_the_current_item_and_leaves_the_rest() {
+        let f = fixture();
+        let paths: Vec<PathBuf> = ["a.bin", "b.bin", "c.bin"].iter().map(|n| cache_file(&f, n)).collect();
+        let inputs = paths.iter().map(|p| delete_input(p, 4)).collect();
+        let plan = build(meta(false), inputs, &f.ctx);
+        let token = CancelToken::default();
+        let stop = token.clone();
+        let exec = execute(&plan, &f.ctx, &token, move |progress| {
+            if progress.done == 1 {
+                stop.cancel();
+            }
+        })
+        .unwrap();
+        assert!(!paths[0].exists());
+        assert!(paths[1].exists() && paths[2].exists());
+        assert_eq!(exec.run.status, "cancelled");
+        assert_eq!((exec.run.items_ok, exec.run.items_skipped), (1, 2));
+        assert_eq!(exec.run.bytes_freed, 4);
+        assert_eq!(exec.log[2].outcome, "skipped");
     }
 
     #[test]

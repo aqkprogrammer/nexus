@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -60,6 +61,7 @@ pub struct HistoryPoint {
 pub struct Telemetry {
     latest: RwLock<Option<TelemetrySample>>,
     history: Mutex<VecDeque<HistoryPoint>>,
+    refresh_volume: AtomicBool,
     pub processes: ProcessTable,
 }
 
@@ -68,8 +70,14 @@ impl Telemetry {
         Arc::new(Self {
             latest: RwLock::new(None),
             history: Mutex::new(VecDeque::with_capacity(HISTORY_LEN)),
+            refresh_volume: AtomicBool::new(false),
             processes: ProcessTable::new(),
         })
+    }
+
+    /// Reads disk capacity on the next tick instead of waiting for the slow cadence.
+    pub fn request_volume_refresh(&self) {
+        self.refresh_volume.store(true, Ordering::Relaxed);
     }
 
     pub fn latest(&self) -> Option<TelemetrySample> {
@@ -163,7 +171,8 @@ pub fn spawn(
                     temperature = components.as_mut().and_then(cpu_temperature);
                     temperature_at = Some(Instant::now());
                 }
-                if volume_at.elapsed() >= Duration::from_secs(15) {
+                let refresh = telemetry.refresh_volume.swap(false, Ordering::Relaxed);
+                if refresh || volume_at.elapsed() >= Duration::from_secs(15) {
                     volume = data_volume();
                     volume_at = Instant::now();
                 }
